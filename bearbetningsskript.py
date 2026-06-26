@@ -121,7 +121,7 @@ def contains_personnummer(text):
     - 991012-1234
     - 1999-10-12
     - 1999-1012
-    - 890747-T285
+    - 890747-T123
     - 990101T123
     - 990101-T123
     """
@@ -130,13 +130,15 @@ def contains_personnummer(text):
 
     t = text.upper()
 
+    # Här är det personnummerformat som skriptet accepterar
+
     patterns = [
-        r"\b\d{8}[-+]\d{4}\b",          # 19991012-1234
-        r"\b\d{6}[-+]\d{4}\b",          # 991012-1234
-        r"\b\d{4}-\d{2}-\d{2}\b",       # 1999-10-12
-        r"\b\d{4}-\d{4}\b",             # 1999-1012
-        r"\b\d{6}-?T\d{3}\b",           # 890747-T285 or 890747T285
-        r"\b\d{8}-?T\d{3}\b",           # 19890747-T285 or 19890747T285
+        r"\b\d{8}[-+]\d{4}\b",          # xxxxxxxx-xxxx
+        r"\b\d{6}[-+]\d{4}\b",          # xxxxxx-xxxx
+        r"\b\d{4}-\d{2}-\d{2}\b",       # yyyy-mm-dd
+        r"\b\d{4}-\d{4}\b",             # yyyy-mmdd
+        r"\b\d{6}-?T\d{3}\b",           # xxxxxx-Txxx or xxxxxxTxxx
+        r"\b\d{8}-?T\d{3}\b",           # xxxxxxxx-Txxx or xxxxxxxxTxxx
         r"\b\d{6}-?R\d{3}\b",           # xxxxxx-Rxxx   
         r"\b\d{8}-?R\d{3}\b",           # xxxxxxxx-Rxxx
     ]
