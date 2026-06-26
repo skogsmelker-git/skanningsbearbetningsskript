@@ -56,6 +56,7 @@ START_PAGE_WEAK_MARKERS = [
 
 SPECIAL_START_PAGE_IDENTIFIERS = [
     "INTYG OM FULLGJORDA STUDIER",
+    "TRANSPORT STYRELSEN",
 ]
 
 # These strongly indicate that a page is NOT a first page.
