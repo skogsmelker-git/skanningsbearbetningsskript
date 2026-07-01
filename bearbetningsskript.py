@@ -11,6 +11,16 @@ from tqdm import tqdm
 from pypdf import PdfReader, PdfWriter
 from openpyxl import Workbook
 
+### Detta avsnitt är det som importerar configurationer som man fastställer i gränssnittet
+
+def get_default_config():
+    return {
+        "start_page_strong_award_markers": START_PAGE_STRONG_AWARD_MARKERS,
+        "start_page_degree_markers": START_PAGE_DEGREE_MARKERS,
+        "start_page_weak_markers": START_PAGE_WEAK_MARKERS,
+        "special_start_page_identifiers": SPECIAL_START_PAGE_IDENTIFIERS,
+        "non_start_page_patterns": NON_START_PAGE_PATTERNS,
+    }
 
 # Start-page detection is deliberately score-based rather than a single exact match.
 # The ordinary degree certificate first page is a sparse ceremonial cover page.
@@ -185,12 +195,13 @@ def compact_ocr_text(text):
     return re.sub(r"[^A-ZÅÄÖ0-9]+", "", t)
 
 
-def has_non_start_page_indicators(text):
+def has_non_start_page_indicators(text, config):
     t = normalize_ocr_text(text)
     compact = compact_ocr_text(text)
+    for pattern in config["non_start_page_patterns"]:
 
-    if any(re.search(pattern, t, flags=re.IGNORECASE) for pattern in NON_START_PAGE_PATTERNS):
-        return True
+        if any(re.search(pattern, t, flags=re.IGNORECASE) for pattern in NON_START_PAGE_PATTERNS):
+            return True
 
     # Same checks without spaces/punctuation, because PDF text extraction often
     # returns strings like 'Examensbevisför', 'Diplomafor', 'DatumDatePoängCredits'.
@@ -241,13 +252,13 @@ def has_page_one_footer(text):
     return any(re.search(pattern, bottom_text) for pattern in footer_patterns)
 
 
-def is_special_certificate(text):
-    if not text:
-        return False
-    return any(fuzzy_identifier_present(marker, text) for marker in SPECIAL_START_PAGE_IDENTIFIERS)
+
+def is_special_certificate(text, config):
+    return any(fuzzy_identifier_present(marker, text)
+               for marker in config["special_start_page_identifiers"])
 
 
-def is_start_page(text):
+def is_start_page(text, config):
     """
     Determines whether a page is the start page of a degree certificate.
 
@@ -311,9 +322,9 @@ def is_start_page(text):
 
     t = normalize_ocr_text(text)
 
-    award_hits = count_fuzzy_matches(START_PAGE_STRONG_AWARD_MARKERS, t)
-    degree_hits = count_fuzzy_matches(START_PAGE_DEGREE_MARKERS, t)
-    weak_hits = count_fuzzy_matches(START_PAGE_WEAK_MARKERS, t)
+    award_hits = count_fuzzy_matches(config["START_PAGE_STRONG_AWARD_MARKERS"], t)
+    degree_hits = count_fuzzy_matches(config["START_PAGE_DEGREE_MARKERS"], t)
+    weak_hits = count_fuzzy_matches(config["START_PAGE_WEAK_MARKERS"], t)
     page_one = has_page_one_footer(text)
 
     # A later administrative page can repeat the awarded-degree wording and degree title.
@@ -357,11 +368,11 @@ def is_pdf_readable(reader):
         return False
     return False
 
-def has_certificates(reader):
+def has_certificates(reader, config):
     try:
         for page in reader.pages:
             text = page.extract_text() or ""
-            if is_start_page(text):
+            if is_start_page(text, config):
                 return True
     except:
         return False
@@ -449,7 +460,7 @@ def consensus(values):
 # PROCESS ONE PDF
 # -------------------------
 def process_pdf(args):
-    pdf_path, input_root, output_root = args
+    pdf_path, input_root, output_root, config = args
 
     rows = []
     validation = []
@@ -463,7 +474,7 @@ def process_pdf(args):
 
     for i, page in enumerate(reader.pages):
         text = page.extract_text() or ""
-        if is_start_page(text):
+        if is_start_page(text, config):
             start_pages.append(i)
 
     if not start_pages:
@@ -527,7 +538,7 @@ def process_pdf(args):
 # -------------------------
 # MAIN
 # -------------------------
-def process_all(input_root, output_root):
+def process_all(input_root, output_root, config):
 
     volumes = {}
 
@@ -583,7 +594,7 @@ def process_all(input_root, output_root):
             for file in files:
                 if file.lower().endswith(".pdf"):
                     pdf_path = os.path.join(root, file)
-                    batch.append((pdf_path, input_root, output_root))
+                    batch.append((pdf_path, input_root, output_root, config))
 
                     if len(batch) == BATCH_SIZE:
                         futures = [executor.submit(process_pdf, arg) for arg in batch]
@@ -633,4 +644,6 @@ if __name__ == "__main__":
         print("Usage: python split_certificates.py <input_root> <output_root>")
         sys.exit(1)
 
-    process_all(sys.argv[1], sys.argv[2])
+    config = get_default_config()
+    process_all(sys.argv[1], sys.argv[2], config)
+
