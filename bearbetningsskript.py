@@ -20,6 +20,11 @@ def get_default_config():
         "start_page_weak_markers": START_PAGE_WEAK_MARKERS,
         "special_start_page_identifiers": SPECIAL_START_PAGE_IDENTIFIERS,
         "non_start_page_patterns": NON_START_PAGE_PATTERNS,
+
+        # GUI/configurable behavior flags
+        "skip_unreadable_volumes": True,
+        "require_second_page_confirmation": True,
+
     }
 
 # Start-page detection is deliberately score-based rather than a single exact match.
