@@ -11,22 +11,6 @@ from tqdm import tqdm
 from pypdf import PdfReader, PdfWriter
 from openpyxl import Workbook
 
-### Detta avsnitt är det som importerar configurationer som man fastställer i gränssnittet
-
-def get_default_config():
-    return {
-        "start_page_strong_award_markers": START_PAGE_STRONG_AWARD_MARKERS,
-        "start_page_degree_markers": START_PAGE_DEGREE_MARKERS,
-        "start_page_weak_markers": START_PAGE_WEAK_MARKERS,
-        "special_start_page_identifiers": SPECIAL_START_PAGE_IDENTIFIERS,
-        "non_start_page_patterns": NON_START_PAGE_PATTERNS,
-
-        # GUI/configurable behavior flags
-        "skip_unreadable_volumes": True,
-        "require_second_page_confirmation": True,
-
-    }
-
 # Start-page detection is deliberately score-based rather than a single exact match.
 # The ordinary degree certificate first page is a sparse ceremonial cover page.
 # Later pages are administrative/table/diploma-supplement pages and should be rejected.
@@ -100,6 +84,23 @@ NON_START_PAGE_PATTERNS = [
 EXCEL_FILENAME = "index.xlsx"
 VALIDATION_FILENAME = "validation_report.txt"
 UNREADABLE_LOG = "unreadable_volumes.log"
+
+### Detta avsnitt är det som importerar configurationer som man fastställer i gränssnittet
+
+def get_default_config():
+    return {
+        "start_page_strong_award_markers": START_PAGE_STRONG_AWARD_MARKERS,
+        "start_page_degree_markers": START_PAGE_DEGREE_MARKERS,
+        "start_page_weak_markers": START_PAGE_WEAK_MARKERS,
+        "special_start_page_identifiers": SPECIAL_START_PAGE_IDENTIFIERS,
+        "non_start_page_patterns": NON_START_PAGE_PATTERNS,
+
+        # GUI/configurable behavior flags
+        "skip_unreadable_volumes": True,
+        "require_second_page_confirmation": True,
+
+    }
+
 
 # -------------------------
 # DETECTION
@@ -290,7 +291,7 @@ def is_start_page(text, config):
         return False
 
     # Preserve the existing exception workflow for rare special certificates.
-    if is_special_certificate(text):
+    if is_special_certificate(text, config):
         return True
 
     # HARD FAIL 2: contains personnummer
@@ -303,7 +304,7 @@ def is_start_page(text, config):
 
 
     # Later pages contain tables, bilingual administrative fields, or diploma supplement text.
-    if has_non_start_page_indicators(text):
+    if has_non_start_page_indicators(text, config):
         return False
 
     # HARD FAIL: any structured academic page
@@ -327,9 +328,9 @@ def is_start_page(text, config):
 
     t = normalize_ocr_text(text)
 
-    award_hits = count_fuzzy_matches(config["START_PAGE_STRONG_AWARD_MARKERS"], t)
-    degree_hits = count_fuzzy_matches(config["START_PAGE_DEGREE_MARKERS"], t)
-    weak_hits = count_fuzzy_matches(config["START_PAGE_WEAK_MARKERS"], t)
+    award_hits = count_fuzzy_matches(config["start_page_strong_award_markers"], t)
+    degree_hits = count_fuzzy_matches(config["start_page_degree_markers"], t)
+    weak_hits = count_fuzzy_matches(config["start_page_weak_markers"], t)
     page_one = has_page_one_footer(text)
 
     # A later administrative page can repeat the awarded-degree wording and degree title.
@@ -517,7 +518,7 @@ def process_pdf(args):
         first_text = reader.pages[start].extract_text() or ""
 
         # ✅ Special certificate priority
-        if is_special_certificate(first_text):
+        if is_special_certificate(first_text, config):
             pnr_special = extract_pnr_special(first_text)
             if pnr_special:
                 all_pnrs.append(pnr_special)
@@ -545,6 +546,10 @@ def process_pdf(args):
 # -------------------------
 def process_all(input_root, output_root, config):
 
+    #print("CONFIG KEYS RECEIVED:")
+    #for key in config.keys():
+    #    print(" -", key)
+
     volumes = {}
 
     for root, _, files in os.walk(input_root):
@@ -571,7 +576,7 @@ def process_all(input_root, output_root, config):
                 volume_ok = False
                 break
 
-            if not has_certificates(reader):
+            if not has_certificates(reader, config):
                 volume_ok = False
                 break
 
