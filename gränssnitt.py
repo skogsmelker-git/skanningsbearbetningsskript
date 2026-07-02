@@ -1,7 +1,3 @@
-#from bearbetningsskript import process_all, get_default_config
-
-#process_all(input_folder, output_folder, config)
-
 import tkinter as tk
 from tkinter import filedialog, messagebox
 import json
@@ -28,8 +24,8 @@ class ListEditor(tk.Frame):
         self.entry = tk.Entry(entry_frame)
         self.entry.pack(side="left", fill="x", expand=True)
 
-        tk.Button(entry_frame, text="Add", command=self.add_item).pack(side="left")
-        tk.Button(entry_frame, text="Remove", command=self.remove_selected).pack(side="left")
+        tk.Button(entry_frame, text="+", command=self.add_item).pack(side="left")
+        tk.Button(entry_frame, text="-", command=self.remove_selected).pack(side="left")
 
     def add_item(self):
         value = self.entry.get().strip()
@@ -57,8 +53,8 @@ class ListEditor(tk.Frame):
 class CertificateGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("Certificate Splitter")
-        self.root.geometry("900x750")
+        self.root.title("Gränssnitt för bearbetningsskript")
+        self.root.geometry("550x800")
 
         self.config = get_default_config()
 
@@ -77,32 +73,32 @@ class CertificateGUI:
         frame.pack(fill="x", padx=10, pady=10)
 
         # INPUT
-        tk.Label(frame, text="Input folder").grid(row=0, column=0, sticky="w")
+        tk.Label(frame, text="Input").grid(row=0, column=0, sticky="w")
         tk.Entry(frame, textvariable=self.input_path, width=60).grid(row=0, column=1, padx=5)
-        tk.Button(frame, text="Browse", command=self.select_input).grid(row=0, column=2)
+        tk.Button(frame, text="Bläddra", command=self.select_input).grid(row=0, column=2)
 
         # OUTPUT
-        tk.Label(frame, text="Output folder").grid(row=1, column=0, sticky="w")
+        tk.Label(frame, text="Output").grid(row=1, column=0, sticky="w")
         tk.Entry(frame, textvariable=self.output_path, width=60).grid(row=1, column=1, padx=5)
-        tk.Button(frame, text="Browse", command=self.select_output).grid(row=1, column=2)
+        tk.Button(frame, text="Bläddra", command=self.select_output).grid(row=1, column=2)
 
         # CONFIG EDITORS
-        self.degree_editor = ListEditor(self.root, "START_PAGE_DEGREE_MARKERS")
+        self.degree_editor = ListEditor(self.root, "Markör för bevisets första sida") #(START_PAGE_DEGREE_MARKERS)
         self.degree_editor.pack(fill="both", expand=True, padx=10, pady=5)
 
-        self.award_editor = ListEditor(self.root, "START_PAGE_STRONG_AWARD_MARKERS")
+        self.award_editor = ListEditor(self.root, "Stark indikation att beviset är en första sida") #START_PAGE_STRONG_AWARD_MARKERS
         self.award_editor.pack(fill="both", expand=True, padx=10, pady=5)
 
-        self.special_editor = ListEditor(self.root, "SPECIAL_START_PAGE_IDENTIFIERS")
+        self.special_editor = ListEditor(self.root, "Markör för undantagsbevis") #SPECIAL_START_PAGE_IDENTIFIERS
         self.special_editor.pack(fill="both", expand=True, padx=10, pady=5)
 
-        self.nonstart_editor = ListEditor(self.root, "NON_START_PAGE_PATTERNS")
+        self.nonstart_editor = ListEditor(self.root, "Markör för att inte vara en första sida") #NON_START_PAGE_PATTERNS
         self.nonstart_editor.pack(fill="both", expand=True, padx=10, pady=5)
 
         # RUN BUTTON
         tk.Button(
             self.root,
-            text="Run processing",
+            text="Starta skriptet",
             command=self.run_processing,
             bg="#2d7d46",
             fg="white",
