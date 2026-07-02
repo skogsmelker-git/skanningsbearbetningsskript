@@ -1,9 +1,10 @@
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, ttk
+import threading
+import queue
 import json
 
 from bearbetningsskript import process_all, get_default_config
-
 
 # -------------------------
 # LIST EDITOR COMPONENT
@@ -15,7 +16,7 @@ class ListEditor(tk.Frame):
 
         tk.Label(self, text=title, font=("Segoe UI", 10, "bold")).pack(anchor="w")
 
-        self.listbox = tk.Listbox(self, height=6)
+        self.listbox = tk.Listbox(self, height=4) # Detta är längden på text-input rutorna
         self.listbox.pack(fill="both", expand=True, padx=2, pady=2)
 
         entry_frame = tk.Frame(self)
@@ -55,14 +56,24 @@ class CertificateGUI:
         self.root = root
         self.root.title("Gränssnitt för bearbetningsskript")
         self.root.geometry("550x800")
+        # Progress bar
+        self.log_queue = queue.Queue()
+        self.progress_queue = queue.Queue()
 
         self.config = get_default_config()
 
         self.input_path = tk.StringVar()
         self.output_path = tk.StringVar()
 
+
+        self.skip_unreadable = tk.BooleanVar(value=True)
+        self.require_second_page = tk.BooleanVar(value=True)
+
         self.build_ui()
         self.load_config_into_ui()
+
+        self.poll_queues()
+
 
     # -------------------------
     # UI LAYOUT
@@ -81,6 +92,23 @@ class CertificateGUI:
         tk.Label(frame, text="Output").grid(row=1, column=0, sticky="w")
         tk.Entry(frame, textvariable=self.output_path, width=60).grid(row=1, column=1, padx=5)
         tk.Button(frame, text="Bläddra", command=self.select_output).grid(row=1, column=2)
+
+        '''
+        # Checkbox controls
+
+        tk.Checkbutton(
+            self.root,
+            text="Hoppa över oläsbara volymer",
+            variable=self.skip_unreadable
+        ).pack(anchor="w", padx=10)
+
+        tk.Checkbutton(
+            self.root,
+            text="Kräv bekräftelse från sida 2",
+            variable=self.require_second_page
+        ).pack(anchor="w", padx=10)
+        '''
+
 
         # CONFIG EDITORS
         self.degree_editor = ListEditor(self.root, "Markör för bevisets första sida") #(START_PAGE_DEGREE_MARKERS)
@@ -104,6 +132,25 @@ class CertificateGUI:
             fg="white",
             height=2
         ).pack(fill="x", padx=10, pady=10)
+        ### Progress bar
+        self.progress = ttk.Progressbar(
+            self.root,
+            orient="horizontal",
+            mode="determinate"
+        )
+
+        self.progress.pack(
+            fill="x",
+            padx=10,
+            pady=5
+        )
+
+        self.progress_label = tk.Label(
+            self.root,
+            text="0 / 0"
+        )
+
+        self.progress_label.pack()
 
         # LOG box
         self.log_box = tk.Text(self.root, height=8)
@@ -143,6 +190,7 @@ class CertificateGUI:
         if path:
             self.output_path.set(path)
 
+
     # -------------------------
     # LOGGING
     # -------------------------
@@ -174,14 +222,77 @@ class CertificateGUI:
         self.log(f"Output: {output_folder}")
 
         try:
-            process_all(input_folder, output_folder, config)
-            self.log("Finished successfully.")
-            messagebox.showinfo("Done", "Processing complete")
+            threading.Thread(
+                target=self.run_processor_thread,
+                args=(
+                    input_folder,
+                    output_folder,
+                    config
+                ),
+                daemon=True
+            ).start()
+
+
 
         except Exception as e:
             self.log(f"ERROR: {e}")
             messagebox.showerror("Error", str(e))
 
+# ---------
+# Progress bar
+# -----------
+
+    def processor_log_callback(self, message):
+        self.log_queue.put(message)
+
+    def processor_progress_callback(self, completed, total):
+        self.progress_queue.put((completed, total))
+
+    def update_progress(self, completed, total):
+
+        self.progress["maximum"] = max(total, 1)
+        self.progress["value"] = completed
+
+        self.progress_label.config(
+            text=f"{completed} / {total}"
+        )
+
+    def poll_queues(self):
+
+        while not self.log_queue.empty():
+            msg = self.log_queue.get()
+            self.log(msg)
+
+        while not self.progress_queue.empty():
+            completed, total = self.progress_queue.get()
+            self.update_progress(completed, total)
+
+        self.root.after(100, self.poll_queues)
+
+    def run_processor_thread(
+            self,
+            input_folder,
+            output_folder,
+            config
+    ):
+
+            try:
+
+                process_all(
+                    input_folder,
+                    output_folder,
+                    config,
+                    log_callback=self.processor_log_callback,
+                    progress_callback=self.processor_progress_callback
+                )
+                self.log_queue.put(
+                    "Processing complete"
+            )
+            except Exception as e:
+
+                self.log_queue.put(
+                    f"ERROR: {e}"
+                )
 
 # -------------------------
 # ENTRY

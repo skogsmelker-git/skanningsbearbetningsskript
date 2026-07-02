@@ -11,6 +11,15 @@ from tqdm import tqdm
 from pypdf import PdfReader, PdfWriter
 from openpyxl import Workbook
 
+# Log > GUI
+def emit_log(message, log_callback=None):
+    if log_callback:
+        log_callback(message)
+    else:
+        print(message)
+
+
+
 # Start-page detection is deliberately score-based rather than a single exact match.
 # The ordinary degree certificate first page is a sparse ceremonial cover page.
 # Later pages are administrative/table/diploma-supplement pages and should be rejected.
@@ -62,23 +71,20 @@ SPECIAL_START_PAGE_IDENTIFIERS = [
 # The patterns are intentionally focused on headings/phrases rather than single
 # common words, so that dates on the cover page do not cause false rejection.
 NON_START_PAGE_PATTERNS = [
-    r"\bDIPLOMA\s+SUPPLEMENT\b",
-    r"THIS\s+DIPLOMA\s+SUPPLEMENT\s+FOLLOWS\s+THE\s+MODEL",
-    r"\bEXAMENSBEVIS\s+F[ÖO]R\b",
-    r"\bDIPLOMA\s+FOR\b",
-    r"\bOBLIGATORISKA\s+KURSER\b",
-    r"\bVALFRIA\s+KURSER\b",
-    r"\bCOMPULSORY\s+COURSES\b",
-    r"\bELECTIVE\s+COURSES\b",
-    r"\bPO[ÄA]NG\s*/\s*CREDITS\b",
-    r"\bBETYG\s*/\s*GRADES\b",
-    r"\bDATUM\s*/\s*DATE\b",
-    r"\bCOURSE\s+CODE\b",
-    r"\bKURSKOD\b",
-    r"\bIDENTIFICATION\s+NUMBER\b",
-    r"\bSTUDENT\s+IDENTIFICATION\s+NUMBER\b",
-    r"\bEXAMINATOR\b",
-    r"\bTHESIS\s+TITLE\b",
+    "DIPLOMA SUPPLEMENT",
+    "THIS DIPLOMA SUPPLEMENT FOLLOWS THE MODEL",
+    "EXAMENSBEVIS FÖR",
+    "DIPLOMA FOR",
+    "OBLIGATORISKA KURSER",
+    "VALFRIA KURSER",
+    "COMPULSORY COURSES",
+    "ELECTIVE COURSES",
+    "COURSE CODE",
+    "KURSKOD",
+    "IDENTIFICATION NUMBER",
+    "STUDENT IDENTIFICATION NUMBER",
+    "EXAMINATOR",
+    "THESIS TITLE"
 ]
 
 EXCEL_FILENAME = "index.xlsx"
@@ -200,41 +206,55 @@ def compact_ocr_text(text):
     t = normalize_ocr_text(text)
     return re.sub(r"[^A-ZÅÄÖ0-9]+", "", t)
 
+def plain_text_to_fuzzy_regex(marker):
+    """
+    Converts
+
+    DIPLOMA SUPPLEMENT
+
+    into a regex that matches:
+
+    DIPLOMA SUPPLEMENT
+    DIPLOMASUPPLEMENT
+    DIPLOMA   SUPPLEMENT
+    DIPLOMA-SUPPLEMENT
+    """
+
+    marker = normalize_ocr_text(marker)
+
+    words = re.findall(
+        r"[A-ZÅÄÖ0-9]+",
+        marker
+    )
+
+    if not words:
+        return None
+
+    return (
+        r"\b"
+        + r"[\W_]*".join(
+            re.escape(word)
+            for word in words
+        )
+        + r"\b"
+    )
 
 def has_non_start_page_indicators(text, config):
-    t = normalize_ocr_text(text)
-    compact = compact_ocr_text(text)
-    for pattern in config["non_start_page_patterns"]:
 
-        if any(re.search(pattern, t, flags=re.IGNORECASE) for pattern in NON_START_PAGE_PATTERNS):
+    compact = compact_ocr_text(text)
+
+    for marker in config["non_start_page_patterns"]:
+
+        if fuzzy_identifier_present(
+            marker,
+            text
+        ):
             return True
 
-    # Same checks without spaces/punctuation, because PDF text extraction often
-    # returns strings like 'Examensbevisför', 'Diplomafor', 'DatumDatePoängCredits'.
-    compact_negative_markers = [
-        "DIPLOMASUPPLEMENT",
-        "THISDIPLOMASUPPLEMENTFOLLOWSTHEMODEL",
-        "EXAMENSBEVISFÖR",
-        "EXAMENSBEVISFOR",
-        "DIPLOMAFOR",
-        "OBLIGATORISKAKURSER",
-        "VALFRIAKURSER",
-        "COMPULSORYCOURSES",
-        "ELECTIVECOURSES",
-        "POÄNGCREDITS",
-        "POANGCREDITS",
-        "BETYGGRADES",
-        "DATUMDATE",
-        "COURSECODE",
-        "KURSKOD",
-        "IDENTIFICATIONNUMBER",
-        "STUDENTIDENTIFICATIONNUMBER",
-        "IDENTIFIKATIONSNUMMER",
-        "EXAMINATOR",
-        "THESISTITLE",
-    ]
+        if compact_ocr_text(marker) in compact:
+            return True
 
-    return any(marker in compact for marker in compact_negative_markers)
+    return False
 
 
 def has_page_one_footer(text):
@@ -473,7 +493,7 @@ def process_pdf(args):
 # Denna funktion kollar så att PDF:en inte är korrumperad, om någonting är fel med den borde detta rapporteras i "validation_report".
     try:
         reader = PdfReader(pdf_path)
-    except:
+    except Exception as e:
         return [], [f"❌ Cannot open: {pdf_path} | {type(e).__name__}: {e}"]
 
     start_pages = []
@@ -544,8 +564,9 @@ def process_pdf(args):
 # -------------------------
 # MAIN
 # -------------------------
-def process_all(input_root, output_root, config):
+def process_all(input_root, output_root, config, log_callback=None, progress_callback=None):
 
+    # Följande är debug kod man kan aktivera för att se vilka "config keys" som matas vidare till gränssnittet.
     #print("CONFIG KEYS RECEIVED:")
     #for key in config.keys():
     #    print(" -", key)
@@ -587,6 +608,21 @@ def process_all(input_root, output_root, config):
 
     print(f"✅ Valid PDFs: {len(valid_pdfs)}")
     print(f"⛔ Skipped volumes: {len(skipped_volumes)}")
+## Progress bar
+    total_pdfs = len(valid_pdfs)
+    completed_pdfs = 0
+
+    emit_log(
+        f"Found {total_pdfs} valid PDF files.",
+        log_callback
+    )
+
+    if progress_callback:
+        progress_callback(
+            0,
+            total_pdfs
+        )
+###
 
     all_rows = []
     validation = []
@@ -617,10 +653,28 @@ def process_all(input_root, output_root, config):
             futures = [executor.submit(process_pdf, arg) for arg in batch]
             all_futures.extend(futures)
 
-        for f in tqdm(as_completed(all_futures), total=len(all_futures), desc="Processing"):
+        for f in tqdm(
+                as_completed(all_futures),
+                total=len(all_futures),
+                desc="Processing"
+        ):
             rows, val = f.result()
+
             all_rows.extend(rows)
             validation.extend(val)
+
+            completed_pdfs += 1
+
+            if progress_callback:
+                progress_callback(
+                    completed_pdfs,
+                    total_pdfs
+                )
+
+            emit_log(
+                f"Processed {completed_pdfs}/{total_pdfs}",
+                log_callback
+            )
 
     os.makedirs(output_root, exist_ok=True)
 
