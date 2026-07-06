@@ -104,6 +104,7 @@ def get_default_config():
         # GUI/configurable behavior flags
         "skip_unreadable_volumes": True,
         "require_second_page_confirmation": True,
+        "allow_personnummer_on_start_page": False,
 
     }
 
@@ -270,7 +271,7 @@ def has_page_one_footer(text):
     bottom_text = " ".join(bottom_lines)
 
     footer_patterns = [
-        r"(?:^|\s)[1I]\s*\(\s*\d+\s*\)(?:\s|$)",  # 1 (6), I (6), 1(6)
+        r"(?:^|\s)[1I]\s*\(\s*\d+",  # 1 (6), I (6), 1(6)
         r"(?:^|\s)PAGE\s+[1I]\s*(?:OF|/)\s*\d+",   # Page 1 of 6
         r"(?:^|\s)SIDA\s+[1I]\s*(?:AV|/)\s*\d+",   # Sida 1 av 6
     ]
@@ -315,10 +316,16 @@ def is_start_page(text, config):
         return True
 
     # HARD FAIL 2: contains personnummer
-    if contains_personnummer(text):
+    if (
+            contains_personnummer(text)
+            and
+            not config.get(
+                "allow_personnummer_on_start_page",
+                False
+            )
+    ):
         return False
 
-    
     if not text:
         return False
 
@@ -338,12 +345,20 @@ def is_start_page(text, config):
    # HARD FAIL: course/table layout indicators
    # Här kan det lätt uppstå problem om det finns undantag där följande ord förekommer i titeln. 
    # Tidigare var ordet "credits" här vilket ställde till problem då vissa program har (120 credits) med i titeln för examen.
-    if any(word in text.upper() for word in [
-       "DATUM", "BETYG",
-       "GRADES",
-       "KURSER", "COURSES"
-   ]):
-       return False
+    # Only reject if CLEAR table structure is present
+    table_indicators = [
+        "KURS",
+        "BETYG", "GRADE",
+        "DATUM", "DATE"
+    ]
+
+    table_hits = sum(
+        1 for word in table_indicators
+        if word in text.upper()
+    )
+
+    if table_hits >= 2:
+        return False
 
 
     t = normalize_ocr_text(text)
@@ -367,6 +382,13 @@ def is_start_page(text, config):
     )
 
     if award_hits >= 1 and degree_hits >= 1 and (page_one or has_officer_or_signature):
+        return True
+
+    if (
+            degree_hits >= 1
+            and award_hits >= 1
+            and has_officer_or_signature
+    ):
         return True
 
     # OCR fallback: if the degree title is damaged, require award wording + page-1 footer
@@ -500,13 +522,23 @@ def process_pdf(args):
 
     for i, page in enumerate(reader.pages):
         text = page.extract_text() or ""
+
         if is_start_page(text, config):
             start_pages.append(i)
+
+            validation.append(
+                f"START PAGE detected on page {i + 1} in {pdf_path}"
+            )
 
     if not start_pages:
         return [], []
 
     start_pages.append(len(reader.pages))
+
+    if len(start_pages) > 2:
+        validation.append(
+            f"Split into {len(start_pages) - 1} certificates: {pdf_path}"
+        )
 
     rel_dir = os.path.relpath(os.path.dirname(pdf_path), input_root)
     output_dir = os.path.join(output_root, rel_dir)
@@ -518,6 +550,7 @@ def process_pdf(args):
     for i in range(len(start_pages)-1):
         start = start_pages[i]
         end = start_pages[i+1]
+
 
         writer = PdfWriter()
         for p in range(start, end):
@@ -557,6 +590,23 @@ def process_pdf(args):
             validation.append(f"⚠️ Missing personnummer: {out_path}")
 
         rows.append([out_name, volym, pnr])
+
+        # ✅ VALIDATION: exactly one start page per split
+        start_count = 0
+
+        for p in range(start, end):
+            try:
+                text = reader.pages[p].extract_text() or ""
+            except:
+                continue
+
+            if is_start_page(text, config):
+                start_count += 1
+
+        if start_count != 1:
+            validation.append(
+                f"⚠️ Suspicious split (start pages={start_count}): {out_path}"
+            )
 
     return rows, validation
 
@@ -636,17 +686,20 @@ def process_all(input_root, output_root, config, log_callback=None, progress_cal
 
         batch = []
 
-        for root, _, files in os.walk(input_root):
-            for file in files:
-                if file.lower().endswith(".pdf"):
-                    pdf_path = os.path.join(root, file)
-                    batch.append((pdf_path, input_root, output_root, config))
+        for pdf_path in valid_pdfs:
 
-                    if len(batch) == BATCH_SIZE:
-                        futures = [executor.submit(process_pdf, arg) for arg in batch]
-                        all_futures.extend(futures)
+            batch.append(
+                (pdf_path, input_root, output_root, config)
+            )
 
-                        batch = []
+            if len(batch) == BATCH_SIZE:
+                futures = [
+                    executor.submit(process_pdf, arg)
+                    for arg in batch
+                ]
+
+                all_futures.extend(futures)
+                batch = []
 
         # process remaining
         if batch:

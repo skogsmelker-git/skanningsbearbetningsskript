@@ -69,6 +69,10 @@ class CertificateGUI:
         self.skip_unreadable = tk.BooleanVar(value=True)
         self.require_second_page = tk.BooleanVar(value=True)
 
+        self.allow_personnummer = tk.BooleanVar(
+            value=False
+        )
+
         self.build_ui()
         self.load_config_into_ui()
 
@@ -93,9 +97,16 @@ class CertificateGUI:
         tk.Entry(frame, textvariable=self.output_path, width=60).grid(row=1, column=1, padx=5)
         tk.Button(frame, text="Bläddra", command=self.select_output).grid(row=1, column=2)
 
-        '''
-        # Checkbox controls
 
+        # Checkbox controls
+        
+        tk.Checkbutton(
+            self.root,
+            text="Tillåt personnummer på första sidan",
+            variable=self.allow_personnummer
+        ).pack(anchor="w", padx=10)
+
+        '''
         tk.Checkbutton(
             self.root,
             text="Hoppa över oläsbara volymer",
@@ -174,6 +185,7 @@ class CertificateGUI:
             "non_start_page_patterns": self.nonstart_editor.get_values(),
             # Keep weak markers from default config unless you expose them
             "start_page_weak_markers": self.config["start_page_weak_markers"],
+            "allow_personnummer_on_start_page": self.allow_personnummer.get(),
         }
 
     # -------------------------
