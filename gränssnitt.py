@@ -2,7 +2,6 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 import threading
 import queue
-import json
 
 from bearbetningsskript import process_all, get_default_config
 

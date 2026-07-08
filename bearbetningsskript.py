@@ -678,11 +678,11 @@ def process_all(input_root, output_root, config, log_callback=None, progress_cal
     validation = []
     all_futures = []
 
-    BATCH_SIZE = 5
+    batch_size = 5
 
-    MAX_WORKERS = 2  # Om processen crashar beror det på att det är för mycket som laddas till minnet samtidigt. Sänk då detta värde.
+    max_workers = 2  # Om processen crashar beror det på att det är för mycket som laddas till minnet samtidigt. Sänk då detta värde.
 
-    with ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
 
         batch = []
 
@@ -692,7 +692,7 @@ def process_all(input_root, output_root, config, log_callback=None, progress_cal
                 (pdf_path, input_root, output_root, config)
             )
 
-            if len(batch) == BATCH_SIZE:
+            if len(batch) == batch_size:
                 futures = [
                     executor.submit(process_pdf, arg)
                     for arg in batch
